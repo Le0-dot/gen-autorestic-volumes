@@ -34,6 +34,9 @@ def create_config() -> Path:
     config_backup = Path(".autorestic.yml.bak")
     config_template = Path(".autorestic.yml.template")
 
+    if not config_template.exists():
+        raise RuntimeError(f"counld not find {config_template}")
+
     if config.exists():
         shutil.move(config, config_backup)
     shutil.copy(config_template, config)
@@ -42,15 +45,21 @@ def create_config() -> Path:
 
 
 def main() -> None:
-    volumes = list_docker_volumes()
-    make_location = partial(make_volume_location, to=["ssd", "gdrive"])
-    volume_locations = reduce(or_, map(make_location, volumes))
-    location = {"locations": volume_locations}
-
     config = create_config()
 
-    with config.open(mode="a") as file:
-        yaml.dump(location, file)
+    with config.open(mode="r") as file:
+        autorestic_config = yaml.safe_load(file)
+
+    backends = autorestic_config["backends"].keys()
+    
+    volumes = list_docker_volumes()
+    make_location = partial(make_volume_location, to=backends)
+    volume_locations = reduce(or_, map(make_location, volumes))
+
+    autorestic_config["locations"] = autorestic_config.get("locations", {}) | volume_locations
+
+    with config.open(mode="w") as file:
+        yaml.dump(autorestic_config, file)
 
 
 if __name__ == "__main__":
